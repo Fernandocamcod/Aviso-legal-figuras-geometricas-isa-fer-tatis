@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GeometríaIA Pro — Reconocimiento de Figuras y Control Seguro</title>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.21.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/knn-classifier@1.2.2/dist/knn-classifier.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@2.1.0/dist/mobilenet.min.js"></script>
+
+<style>
+:root{
+  --bg:#f4f7fb; --card:#ffffff; --pink:#ffb6c1; --pink2:#ff69b4;
+  --blue:#b0e0e6; --blue2:#2c5282; --blue-btn:#4682b4; --txt:#2d3748; --r:16px;
+  --ok:#2ecc71; --warn:#f39c12; --bad:#e74c3c;
+}
+*{box-sizing:border-box}
+body{font-family:'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--txt);
+     margin:0;padding:20px;display:flex;flex-direction:column;align-items:center}
+
+/* ESTILOS PARA LA CAPA DE CONSENTIMIENTO LEGAL (MODAL / OVERLAY) */
+#legal-overlay {
+  position: fixed;
+  top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(6px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.legal-modal {
+  background: var(--card);
+  border-radius: var(--r);
+  max-width: 600px;
+  width: 100%;
+  padding: 30px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+  border: 1px solid #cbd5e0;
+  animation: modalFadeIn 0.3s ease-out;
+}
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.legal-modal h2 {
+  color: var(--blue2);
+  margin-top: 0;
+  font-size: 1.4rem;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.legal-box-scroll {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 15px;
+  height: 180px;
+  overflow-y: auto;
+  font-size: 0.82rem;
+  color: #4a5568;
+  line-height: 1.5;
+  margin: 15px 0;
+}
+.legal-box-scroll h4 {
+  margin: 0 0 6px 0;
+  color: var(--blue2);
+}
+.legal-check-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.85rem;
+  margin-bottom: 20px;
+  cursor: pointer;
+  user-select: none;
+}
+.legal-check-wrap input[type="checkbox"] {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+.app-container {
+  display: none; /* Oculto hasta que se acepte el consentimiento */
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+}
+
+header{text-align:center;margin-bottom:20px}
+h1{color:var(--blue2);margin:0 0 5px;font-size:1.8rem}
+.subtitle{color:#616e7c;font-size:.9rem;margin:0}
+.layout{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));
+        gap:20px;max-width:1100px;width:100%}
+.card{background:var(--card);border-radius:var(--r);padding:20px;
+      box-shadow:0 10px 25px rgba(0,0,0,0.05);border:1px solid #e2e8f0}
+.card h3{margin:0 0 14px;color:var(--blue2);font-size:1.05rem;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px}
+
+.video-wrap{position:relative;width:100%;max-width:320px;height:240px;
+            background:#000;border-radius:14px;overflow:hidden;margin:0 auto 12px;
+            box-shadow:inset 0 0 10px rgba(0,0,0,0.5)}
+video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.box{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+     width:160px;height:160px;border:2px dashed rgba(255,255,255,.8);
+     border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.45);
+     pointer-events:none;transition:all .2s ease}
+.box.active{border:3px solid var(--ok);
+            box-shadow:0 0 0 9999px rgba(0,0,0,.45),0 0 20px var(--ok)}
+.flash-effect{position:absolute;top:0;left:0;width:100%;height:100%;background:#fff;opacity:0;pointer-events:none;transition:opacity .15s ease}
+
+.snap-preview-wrap{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px;background:#f8fafc;padding:8px;border-radius:10px;border:1px solid #edf2f7}
+.snap-preview-wrap canvas{width:50px;height:50px;border-radius:6px;border:1px solid #cbd5e0;background:#000}
+.snap-info{font-size:.78rem;color:#4a5568}
+
+.status{background:var(--blue);color:#1a365d;padding:8px 12px;border-radius:8px;
+        font-size:.85rem;text-align:center;margin-bottom:8px;min-height:2.2em;display:flex;align-items:center;justify-content:center;font-weight:600}
+.alert{background:#fff5f5;border:1px solid #feb2b2;color:#c53030;
+       padding:8px 10px;border-radius:8px;font-size:.82rem;text-align:center;
+       margin-bottom:8px;display:none;font-weight:600}
+.result{font-size:1.2rem;font-weight:700;color:var(--blue2);
+        text-align:center;min-height:1.6em;margin:8px 0}
+.bar{width:100%;height:10px;background:#edf2f7;border-radius:5px;
+     overflow:hidden;margin-bottom:10px}
+.bar>div{height:100%;width:0;background:linear-gradient(90deg,var(--pink),var(--blue-btn));
+         transition:width .25s ease-out}
+.progress-wrap{width:100%;height:6px;background:#edf2f7;border-radius:3px;
+               overflow:hidden;margin-top:6px;display:none}
+.progress-wrap>div{height:100%;background:var(--ok);width:0;transition:width .15s}
+
+.classes{width:100%;margin-top:12px;font-size:.82rem;max-height:200px;
+         overflow-y:auto;padding-right:4px}
+.row{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;
+     margin-bottom:5px;background:#f7fafc;border:1px solid #edf2f7}
+.row .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.row .count{font-weight:700;color:var(--blue-btn);font-size:.8rem;background:#ebf8ff;padding:2px 6px;border-radius:4px}
+.dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+.del-btn{background:transparent;border:none;color:var(--bad);cursor:pointer;
+         font-size:1rem;padding:0 4px;line-height:1}
+.del-btn:hover{transform:scale(1.2)}
+
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+button{background:var(--pink);border:none;color:#4a1525;padding:10px;
+       border-radius:8px;font-weight:600;cursor:pointer;transition:.15s;font-size:.82rem}
+button:hover{background:var(--pink2);color:#fff;transform:translateY(-1px)}
+button.blue{background:var(--blue);color:#1a365d}
+button.blue:hover{background:var(--blue-btn);color:#fff}
+button.primary{background:var(--blue-btn);color:#fff;font-size:.9rem;padding:12px}
+button.primary:hover{background:var(--blue2)}
+button.ok{background:#c8e6c9;color:#1b5e20}
+button.ok:hover{background:var(--ok);color:#fff}
+button.danger{background:#fed7d7;color:#9b2c2c}
+button.danger:hover{background:var(--bad);color:#fff}
+button.full{grid-column:span 2}
+button:disabled{opacity:.5;cursor:not-allowed;transform:none}
+
+.input-row{display:flex;gap:6px;margin-bottom:10px}
+.input-row input{flex:1;padding:9px 12px;border:1px solid #cbd5e0;
+                 border-radius:8px;font-size:.85rem;outline:none}
+.input-row input:focus{border-color:var(--blue-btn)}
+
+.sliders{background:#f7fafc;border-radius:10px;padding:12px;margin-bottom:10px;font-size:.8rem;border:1px solid #edf2f7}
+.sliders label{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.sliders label:last-child{margin-bottom:0}
+.sliders input[type=range]{flex:1}
+.sliders .val{min-width:38px;text-align:right;font-weight:700;color:var(--blue-btn)}
+
+.mode-toggle{display:flex;gap:6px;margin-bottom:12px;background:#edf2f7;padding:4px;border-radius:8px}
+.mode-toggle button{flex:1;background:transparent;color:#4a5568;padding:6px;font-size:.78rem}
+.mode-toggle button.active{background:#fff;color:var(--blue2);box-shadow:0 2px 4px rgba(0,0,0,0.05)}
+
+.security-badge{background:#e6fffa;border:1px solid #b2f5ea;color:#234e52;padding:10px;border-radius:10px;font-size:.78rem;margin-top:12px;line-height:1.4}
+
+.note{font-size:.75rem;color:#718096;text-align:center;margin-top:10px}
+</style>
+</head>
+<body>
+
+<!-- ═══════ CAPA DE CONSENTIMIENTO Y AVISO LEGAL ═══════ -->
+<div id="legal-overlay">
+  <div class="legal-modal">
+    <h2>🔒 Consentimiento Legal y Privacidad Biométrica</h2>
+    <p style="font-size: 0.85rem; color: #4a5568; margin-top: 0;">
+      De conformidad con la Ley Orgánica de Protección de Datos Personales (LOPDP), la Resolución SPDP y estándares internacionales (CEN/TR 18241:2025 · ISO/IEC 23894), por favor lea los términos de tratamiento de datos antes de acceder al prototipo.
+    </p>
+    
+    <div class="legal-box-scroll">
+      <h4>1. Tratamiento de Datos Sensibles (Biometría)</h4>
+      <p>Este sistema de reconocimiento visual procesa fotogramas en tiempo real para extraer vectores numéricos y plantillas matemáticas de características. No se almacenan imágenes en bruto ni videos de los usuarios en servidores externos.</p>
+      
+      <h4>2. Minimización y Privacidad desde el Diseño</h4>
+      <p>Los datos procesados se manejan de manera volátil en la memoria del navegador y las plantillas matemáticas se resguardan de forma local en el dispositivo (IndexedDB). El usuario mantiene el control absoluto y puede vaciar la memoria en cualquier momento.</p>
+      
+      <h4>3. Uso Autorizado</h4>
+      <p>El uso de este prototipo es estrictamente académico/experimental para fines de validación técnica de algoritmos de inteligencia artificial.</p>
+    </div>
+
+    <label class="legal-check-wrap">
+      <input type="checkbox" id="chkLegal" onchange="toggleAcceptButton()">
+      <span>He leído y acepto la política de protección de datos, el tratamiento de vectores biométricos y las condiciones de uso del prototipo.</span>
+    </label>
+
+    <button id="btnAcceptLegal" class="primary full" style="width:100%; opacity: 0.5; cursor: not-allowed;" disabled onclick="grantAccess()">
+      Continuar y Acceder al Sistema
+    </button>
+  </div>
+</div>
+
+<!-- ═══════ APLICACIÓN PRINCIPAL (BLOQUEADA HASTA ACEPTAR) ═══════ -->
+<div id="appContainer" class="app-container">
+  <header>
+    <h1>GeometríaIA Pro</h1>
+    <p class="subtitle">Reconocimiento con Privacidad desde el Diseño (CEN/TR 18241:2025 & LOPDP)</p>
+  </header>
+
+  <div class="layout">
+
+    <!-- PANEL CÁMARA -->
+    <div class="card">
+      <h3>📷 Cámara & Reconocimiento Seguro</h3>
+      
+      <div class="video-wrap">
+        <video id="webcam" autoplay playsinline muted></video>
+        <div id="box" class="box"></div>
+        <div id="flash" class="flash-effect"></div>
+      </div>
+
+      <button class="primary full" style="width:100%;margin-bottom:12px" id="btnSnap" onclick="triggerSnapshotRecognition()">
+        📸 Capturar y Reconocer Figura
+      </button>
+
+      <div class="mode-toggle">
+        <button id="btnModeSnap" class="active" onclick="setMode('snap')">Modo Foto (Preciso)</button>
+        <button id="btnModeLive" onclick="setMode('live')">Modo En Vivo (Continuo)</button>
+      </div>
+
+      <div class="snap-preview-wrap">
+        <canvas id="snapCanvas" width="224" height="224"></canvas>
+        <div class="snap-info">
+          <b>Vector Volátil (Sin Guardar Foto)</b><br>
+          <span id="snapText">Presiona "Capturar" o [Espacio]</span>
+        </div>
+      </div>
+
+      <div id="status" class="status">Inicializando modelos…</div>
+      <div id="alert" class="alert"></div>
+      <div class="result" id="result">Esperando figura…</div>
+      <div class="bar"><div id="barFill"></div></div>
+      <div class="progress-wrap" id="progressWrap"><div id="progressFill"></div></div>
+
+      <div class="classes" id="classesList"></div>
+    </div>
+
+    <!-- PANEL ENTRENAR & CIBERSEGURIDAD -->
+    <div class="card">
+      <h3>🧠 Entrenamiento & Ciberseguridad</h3>
+      <p style="font-size:.8rem;color:#4a5568;text-align:center;margin:0 0 12px">
+        Coloca la figura en el recuadro. Se procesan únicamente vectores matemáticos normalizados (Privacidad por Defecto).
+      </p>
+
+      <div class="grid2">
+        <button onclick="train('Círculo 2D')">＋ Círculo 2D</button>
+        <button onclick="train('Cuadrado 2D')">＋ Cuadrado 2D</button>
+        <button onclick="train('Triángulo 2D')">＋ Triángulo 2D</button>
+        <button onclick="train('Rectángulo 2D')">＋ Rectángulo 2D</button>
+        <button onclick="train('Esfera 3D')">＋ Esfera 3D</button>
+        <button onclick="train('Cubo 3D')">＋ Cubo 3D</button>
+        <button onclick="train('Cilindro 3D')">＋ Cilindro 3D</button>
+        <button onclick="train('Cono 3D')">＋ Cono 3D</button>
+      </div>
+
+      <div class="input-row">
+        <input id="customName" placeholder="Nueva figura personalizada…" maxlength="30">
+        <button class="blue" onclick="trainCustom()">＋ Añadir</button>
+      </div>
+
+      <button class="ok full" style="width:100%;margin-bottom:12px" onclick="autoCapture()" id="btnAuto">
+        🎬 Captura Rápida en Ráfaga (3 s · ~25 muestras)
+      </button>
+
+      <h3>⚙️ Parámetros de Sensibilidad</h3>
+      <div class="sliders">
+        <label>Confianza mín.
+          <input type="range" id="slConf" min="30" max="90" value="50">
+          <span class="val" id="vConf">50%</span>
+        </label>
+        <label>Margen vs 2ª opción
+          <input type="range" id="slMarg" min="0" max="40" value="10">
+          <span class="val" id="vMarg">10%</span>
+        </label>
+        <label>Mín. muestras requeridas
+          <input type="range" id="slMin" min="1" max="20" value="3">
+          <span class="val" id="vMin">3</span>
+        </label>
+      </div>
+
+      <div class="grid2">
+        <button class="blue full" onclick="exportDB()">⬇ Guardar Respaldo (JSON)</button>
+        <button class="blue full" onclick="document.getElementById('fileImp').click()">⬆ Cargar Respaldo</button>
+        <input type="file" id="fileImp" accept="application/json" style="display:none">
+        <button class="danger full" onclick="resetAll()">🗑 Vaciar Memoria de Figuras</button>
+      </div>
+
+      <div class="security-badge">
+        🛡️ <b>Declaración de Cumplimiento Normativo:</b> Conforme a la <i>Resolución SPDP</i> y normas de IA (<i>ISO/IEC 23894</i>), este sistema descarta las imágenes brutas tras extraer las plantillas vectoriales, cumpliendo con la minimización estricta de datos.
+      </div>
+
+      <div class="note">🔒 Almacenamiento seguro local cifrado en <b>IndexedDB</b> (Solo vectores)</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// FUNCIONES DE CONTROL DEL CONSENTIMIENTO LEGAL
+function toggleAcceptButton() {
+  const chk = document.getElementById('chkLegal');
+  const btn = document.getElementById('btnAcceptLegal');
+  if (chk.checked) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+  } else {
+    btn.disabled = true;
+    btn.style.opacity = '0.5';
+    btn.style.cursor = 'not-allowed';
+  }
+}
+
+function grantAccess() {
+  const overlay = document.getElementById('legal-overlay');
+  const container = document.getElementById('appContainer');
+  
+  // Ocultar modal legal con animación suave y mostrar la aplicación
+  overlay.style.transition = 'opacity 0.3s ease';
+  overlay.style.opacity = '0';
+  setTimeout(() => {
+    overlay.style.display = 'none';
+    container.style.display = 'flex';
+    // Inicializar el sistema de cámara y modelos solo después de aceptar
+    init();
+  }, 300);
+}
+
+// CONFIGURACIÓN & CONSTANTES DE CIBERSEGURIDAD Y DATOS
+const DB_NAME = 'geometria_ia_db_secure_v2';
+const DB_STORE = 'knn_store';
+const DB_KEY   = 'dataset_key';
+const CROP_CSS = 160;
+const TENSOR   = 224;
+const FPS      = 10;
+const FRAME_MS = 1000 / FPS;
+const AUG_PER_CLICK = 6;
+const AUTO_DURATION_MS = 3000;
+const AUTO_INTERVAL_MS = 110;
+
+let cfg = { minConf: 0.50, minMargin: 0.10, minSamples: 3 };
+
+let net, classifier;
+let isReady = false;
+let lastFrame = 0;
+let predictHistory = [];
+let autoCapturing = false;
+let currentMode = 'snap'; // 'snap' o 'live'
+
+const $ = id => document.getElementById(id);
+const webcam = $('webcam');
+
+// INICIALIZACIÓN CON PROTOCOLOS DE PRIVACIDAD DESDE EL DISEÑO
+async function init() {
+  try {
+    try { await tf.setBackend('webgl'); } catch { await tf.setBackend('cpu'); }
+    await tf.ready();
+
+    setStatus('Solicitando acceso seguro a cámara…');
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+      audio: false
+    });
+    webcam.srcObject = stream;
+    await new Promise((res, rej) => {
+      webcam.onloadedmetadata = () => webcam.play().then(res).catch(rej);
+    });
+
+    setStatus('Cargando MobileNet v2 (Pipeline seguro)…');
+    net = await mobilenet.load({ version: 2, alpha: 1.0 });
+
+    setStatus('Cargando clasificador KNN (Plantillas vectoriales)…');
+    classifier = knnClassifier.create();
+
+    const restored = await restoreDB();
+    renderClasses();
+    setStatus(restored
+      ? `✅ Sistema seguro listo (${countClasses()} plantillas cargadas)`
+      : 'Sistema seguro listo. Comienza entrenando tus figuras.');
+    if (restored) flash('💾 Plantillas biométricas restauradas con éxito.');
+
+    bindEvents();
+    isReady = true;
+    
+    setTimeout(updateSnapPreview, 1000);
+    predictLoop();
+  } catch (e) {
+    console.error(e);
+    setStatus(e.name === 'NotAllowedError'
+      ? '❌ Permiso de cámara denegado.'
+      : '❌ Error al iniciar cámara o pipeline.');
+  }
+}
+
+// PROCESAMIENTO DIGITAL Y MINIMIZACIÓN (NO SE ALMACENAN IMÁGENES BRUTAS)
+function getEnhancedCroppedCanvas() {
+  const vw = webcam.videoWidth, vh = webcam.videoHeight;
+  if (!vw || !vh) return null;
+
+  const sx = vw / webcam.clientWidth;
+  const sy = vh / webcam.clientHeight;
+  const boxW = CROP_CSS * sx;
+  const boxH = CROP_CSS * sy;
+  const cx = vw / 2, cy = vh / 2;
+
+  const side = Math.min(boxW, boxH);
+  const x = cx - side / 2;
+  const y = cy - side / 2;
+
+  const c = document.createElement('canvas');
+  c.width = TENSOR; c.height = TENSOR;
+  const ctx = c.getContext('2d');
+
+  ctx.save();
+  ctx.translate(TENSOR, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(webcam, x, y, side, side, 0, 0, TENSOR, TENSOR);
+  ctx.restore();
+
+  const imgData = ctx.getImageData(0, 0, TENSOR, TENSOR);
+  const d = imgData.data;
+
+  for (let i = 0; i < d.length; i += 4) {
+    d[i]   = Math.min(255, Math.max(0, (d[i] - 128) * 1.15 + 128));    
+    d[i+1] = Math.min(255, Math.max(0, (d[i+1] - 128) * 1.15 + 128));   
+    d[i+2] = Math.min(255, Math.max(0, (d[i+2] - 128) * 1.15 + 128));   
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  return c;
+}
+
+// EXTRACCIÓN DE PLANTILLA L2 (VECTORIAL)
+function normalizedActivation(canvas) {
+  let act = net.infer(canvas, 'conv_preds');
+  const norm = tf.norm(act);
+  const normalized = act.div(norm.add(1e-8));
+  act.dispose();
+  return normalized;
+}
+
+// MODOS Y CAPTURA
+function setMode(mode) {
+  currentMode = mode;
+  $('btnModeSnap').classList.toggle('active', mode === 'snap');
+  $('btnModeLive').classList.toggle('active', mode === 'live');
+  $('btnSnap').style.display = mode === 'snap' ? 'block' : 'none';
+  setStatus(mode === 'snap' ? 'Modo Foto seguro activado.' : 'Modo En Vivo seguro activado.');
+}
+
+async function triggerSnapshotRecognition() {
+  if (!isReady) return;
+  
+  const f = $('flash');
+  f.style.opacity = '0.8';
+  setTimeout(() => f.style.opacity = '0', 150);
+
+  const canvas = updateSnapPreview();
+  if (!canvas) return;
+
+  $('snapText').textContent = 'Procesando vector volátil…';
+  await executePrediction(canvas, true);
+}
+
+function updateSnapPreview() {
+  const canvas = getEnhancedCroppedCanvas();
+  if (!canvas) return null;
+  const pCanvas = $('snapCanvas');
+  const pCtx = pCanvas.getContext('2d');
+  pCtx.drawImage(canvas, 0, 0, TENSOR, TENSOR, 0, 0, pCanvas.width, pCanvas.height);
+  return canvas;
+}
+
+// ENTRENAMIENTO SEGURO CON DATA AUGMENTATION (PLANTILLAS)
+async function train(className, quiet = false) {
+  if (!isReady || webcam.readyState < 2) return 0;
+
+  const base = getEnhancedCroppedCanvas();
+  if (!base) return 0;
+
+  let added = 0;
+  try {
+    let a = normalizedActivation(base);
+    classifier.addExample(a, className);
+    a.dispose();
+    added++;
+
+    for (let i = 1; i < AUG_PER_CLICK; i++) {
+      const aug = augmentAdvanced(base, i);
+      const act = normalizedActivation(aug);
+      classifier.addExample(act, className);
+      act.dispose();
+      added++;
+    }
+
+    await scheduleSave();
+    renderClasses();
+    if (!quiet) {
+      setStatus(`✅ +${added} plantillas vectoriales guardadas para "${className}"`);
+      flash(`🧠 Patrón registrado de forma segura`);
+    }
+    return added;
+  } catch (e) {
+    console.error('train:', e);
+    if (!quiet) setStatus('Error en pipeline de entrenamiento.');
+    return 0;
+  }
+}
+
+function augmentAdvanced(src, seed) {
+  const c = document.createElement('canvas');
+  c.width = TENSOR; c.height = TENSOR;
+  const ctx = c.getContext('2d');
+
+  ctx.save();
+  ctx.translate(TENSOR/2, TENSOR/2);
+
+  const angle = ((seed % 5) - 2) * 0.08;
+  ctx.rotate(angle);
+
+  const scale = 1 + ((seed % 3) - 1) * 0.05;
+  ctx.scale(scale, scale);
+
+  if (seed % 2 === 0) ctx.scale(-1, 1);
+
+  ctx.drawImage(src, -TENSOR/2, -TENSOR/2);
+  ctx.restore();
+
+  const img = ctx.getImageData(0, 0, TENSOR, TENSOR);
+  const d = img.data;
+  const bright = 1 + ((seed % 3) - 1) * 0.1;
+
+  for (let i = 0; i < d.length; i += 4) {
+    d[i]   = Math.min(255, Math.max(0, d[i] * bright));
+    d[i+1] = Math.min(255, Math.max(0, d[i+1] * bright));
+    d[i+2] = Math.min(255, Math.max(0, d[i+2] * bright));
+  }
+  ctx.putImageData(img, 0, 0);
+
+  return c;
+}
+
+// BUCLE DE INFERENCIA
+function predictLoop() {
+  if (!isReady) return;
+  const now = performance.now();
+  if (currentMode === 'live' && (now - lastFrame >= FRAME_MS)) {
+    lastFrame = now;
+    const canvas = getEnhancedCroppedCanvas();
+    if (canvas) executePrediction(canvas, false);
+  }
+  requestAnimationFrame(predictLoop);
+}
+
+async function executePrediction(canvas, isSnapshot = false) {
+  if (!classifier) return;
+  const ds = classifier.getClassifierDataset();
+  const classes = Object.keys(ds);
+  
+  if (classes.length === 0) {
+    $('result').innerText = 'Sin plantillas en memoria.';
+    $('barFill').style.width = '0%';
+    $('box').classList.remove('active');
+    if (isSnapshot) $('snapText').textContent = 'Sin datos';
+    return;
+  }
+
+  let act = null;
+  try {
+    act = normalizedActivation(canvas);
+    const res = await classifier.predictClass(act, 5);
+
+    const sorted = Object.entries(res.confidences).sort((a, b) => b[1] - a[1]);
+    const [label1, conf1] = sorted[0];
+    const conf2 = sorted[1] ? sorted[1][1] : 0;
+    const margin = conf1 - conf2;
+    const winnerCount = ds[label1] ? ds[label1].shape[0] : 0;
+
+    $('barFill').style.width = `${Math.round(conf1 * 100)}%`;
+
+    predictHistory.push(label1);
+    if (predictHistory.length > 3) predictHistory.shift();
+
+    const stable = isSnapshot || (predictHistory.length >= 2 && predictHistory.slice(-2).every(l => l === label1));
+    const accepted = conf1 >= cfg.minConf && margin >= cfg.minMargin && winnerCount >= cfg.minSamples && stable;
+
+    if (accepted) {
+      const perc = Math.round(conf1 * 100);
+      $('result').innerText = `🎯 ${label1} (${perc}%) — Acceso Permitido`;
+      $('box').classList.add('active');
+      if (isSnapshot) $('snapText').textContent = `Detectado: ${label1}`;
+    } else if (conf1 >= cfg.minConf * 0.65) {
+      $('result').innerText = `🔍 Posible: ${label1} (${Math.round(conf1 * 100)}%)`;
+      $('box').classList.remove('active');
+      if (isSnapshot) $('snapText').textContent = `Duda: ${label1}`;
+    } else {
+      $('result').innerText = `❓ No verificado`;
+      $('box').classList.remove('active');
+      if (isSnapshot) $('snapText').textContent = 'No identificado';
+    }
+  } catch (e) {
+    console.error('executePrediction:', e);
+  } finally {
+    if (act) act.dispose();
+  }
+}
+
+// CAPTURA AUTOMÁTICA EN RÁFAGA
+async function autoCapture() {
+  if (!isReady || autoCapturing) return;
+
+  const name = prompt('Nombre de la figura a capturar:', 'Mi Figura');
+  if (!name || !name.trim()) return;
+  const className = name.trim();
+
+  autoCapturing = true;
+  const btn = $('btnAuto');
+  btn.disabled = true;
+  $('progressWrap').style.display = 'block';
+  $('progressFill').style.width = '0%';
+
+  const t0 = performance.now();
+  let captured = 0;
+
+  await new Promise(resolve => {
+    const tick = async () => {
+      const elapsed = performance.now() - t0;
+      $('progressFill').style.width = `${Math.min(100, (elapsed / AUTO_DURATION_MS) * 100)}%`;
+      if (elapsed >= AUTO_DURATION_MS) return resolve();
+
+      if (webcam.readyState >= 2) {
+        const base = getEnhancedCroppedCanvas();
+        if (base) {
+          const act = normalizedActivation(base);
+          classifier.addExample(act, className);
+          act.dispose();
+          captured++;
+        }
+      }
+      setTimeout(tick, AUTO_INTERVAL_MS);
+    };
+    tick();
+  });
+
+  await scheduleSave();
+  renderClasses();
+  autoCapturing = false;
+  btn.disabled = false;
+  $('progressWrap').style.display = 'none';
+  setStatus(`✅ Ráfaga segura completada: ${captured} vectores guardados`);
+  flash(`🎬 Patrones de "${className}" registrados`);
+}
+
+// PERSISTENCIA SEGURA EN INDEXEDDB (SOLO PLANTILLAS MATEMÁTICAS)
+let dbPromise = null;
+function openDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e.target.error);
+  });
+  return dbPromise;
+}
+
+async function idbGet(key) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(DB_STORE, 'readonly');
+    const req = tx.objectStore(DB_STORE).get(key);
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+
+async function idbPut(key, value) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    const req = tx.objectStore(DB_STORE).put(value, key);
+    req.onsuccess = () => res();
+    req.onerror = () => rej(req.error);
+  });
+}
+
+async function idbDel(key) {
+  const db = await openDB();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    const req = tx.objectStore(DB_STORE).delete(key);
+    req.onsuccess = () => res();
+    req.onerror = () => rej(req.error);
+  });
+}
+
+let saveTimer = null;
+function scheduleSave() {
+  return new Promise(resolve => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => { await saveDB(); resolve(); }, 400);
+  });
+}
+
+async function saveDB() {
+  if (!classifier) return;
+  try {
+    const ds = classifier.getClassifierDataset();
+    const keys = Object.keys(ds);
+    if (keys.length === 0) { await idbDel(DB_KEY); return; }
+    const out = {};
+    keys.forEach(k => {
+      const t = ds[k];
+      out[k] = { data: Array.from(t.dataSync()), shape: t.shape };
+    });
+    await idbPut(DB_KEY, out);
+  } catch (e) {
+    console.error('saveDB:', e);
+  }
+}
+
+async function restoreDB() {
+  try {
+    const saved = await idbGet(DB_KEY);
+    if (!saved) return false;
+    const tensors = {};
+    Object.keys(saved).forEach(k => {
+      const it = saved[k];
+      if (it && it.data && it.shape) {
+        tensors[k] = tf.tensor2d(it.data, it.shape);
+      }
+    });
+    if (Object.keys(tensors).length === 0) return false;
+    classifier.setClassifierDataset(tensors);
+    return true;
+  } catch (e) {
+    console.error('restoreDB:', e);
+    return false;
+  }
+}
+
+// GESTIÓN DE UI & EVENTOS
+function renderClasses() {
+  const el = $('classesList');
+  if (!classifier) { el.innerHTML = ''; return; }
+  const ds = classifier.getClassifierDataset();
+  const keys = Object.keys(ds).sort();
+  if (keys.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:#a0aec0;padding:10px">Aún no hay plantillas registradas.</div>';
+    return;
+  }
+  el.innerHTML = keys.map(k => {
+    const n = ds[k].shape[0];
+    const cls = n >= 20 ? 'ok' : n >= 8 ? 'warn' : 'bad';
+    return `<div class="row">
+      <span class="dot ${cls}"></span>
+      <span class="name">📐 ${escapeHtml(k)}</span>
+      <span class="count">${n}</span>
+      <button class="del-btn" title="Eliminar" onclick="deleteClass('${escapeAttr(k)}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function deleteClass(name) {
+  if (!confirm(`¿Deseas eliminar la plantilla "${name}"?`)) return;
+  const ds = classifier.getClassifierDataset();
+  const newDs = {};
+  Object.keys(ds).forEach(k => {
+    if (k !== name) newDs[k] = ds[k];
+    else ds[k].dispose();
+  });
+  classifier.setClassifierDataset(newDs);
+  scheduleSave();
+  renderClasses();
+  flash(`🗑 "${name}" eliminada de memoria.`);
+}
+
+function countClasses() {
+  return classifier ? Object.keys(classifier.getClassifierDataset()).length : 0;
+}
+
+async function trainCustom() {
+  const input = $('customName');
+  const name = input.value.trim();
+  if (!name) { alert('Ingresa un nombre para la figura.'); return; }
+  const added = await train(name);
+  if (added > 0) input.value = '';
+}
+
+async function exportDB() {
+  const ds = classifier.getClassifierDataset();
+  if (Object.keys(ds).length === 0) { alert('No hay datos para exportar.'); return; }
+  const out = {};
+  Object.keys(ds).forEach(k => {
+    out[k] = { data: Array.from(ds[k].dataSync()), shape: ds[k].shape };
+  });
+  const blob = new Blob([JSON.stringify(out)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `plantillas_biometricas_${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  flash('⬇ Respaldo de vectores generado.');
+}
+
+async function importDB(file) {
+  try {
+    const text = await file.text();
+    const parsed = JSON.parse(text);
+    const tensors = {};
+    Object.keys(parsed).forEach(k => {
+      const it = parsed[k];
+      if (it && it.data && it.shape) {
+        tensors[k] = tf.tensor2d(it.data, it.shape);
+      }
+    });
+    if (Object.keys(tensors).length === 0) { alert('Estructura de respaldo no válida.'); return; }
+    classifier.setClassifierDataset(tensors);
+    await scheduleSave();
+    renderClasses();
+    flash(`⬆ Plantillas cargadas (${Object.keys(tensors).length} clases).`);
+  } catch (e) {
+    console.error(e);
+    alert('Error al procesar el archivo JSON.');
+  }
+}
+
+async function resetAll() {
+  if (!confirm('¿Seguro que deseas eliminar TODAS las plantillas vectoriales?')) return;
+  classifier.clearAllClasses();
+  await idbDel(DB_KEY);
+  $('result').innerText = 'Memoria vaciada';
+  $('barFill').style.width = '0%';
+  $('box').classList.remove('active');
+  renderClasses();
+  setStatus('🗑 Memoria de plantillas reiniciada.');
+  flash('🗑 Base de datos segura borrada.');
+}
+
+function bindEvents() {
+  const c = $('slConf'), m = $('slMarg'), s = $('slMin');
+  c.oninput = () => { cfg.minConf = c.value / 100; $('vConf').textContent = c.value + '%'; };
+  m.oninput = () => { cfg.minMargin = m.value / 100; $('vMarg').textContent = m.value + '%'; };
+  s.oninput = () => { cfg.minSamples = +s.value; $('vMin').textContent = s.value; };
+
+  $('fileImp').onchange = e => {
+    const f = e.target.files[0];
+    if (f) importDB(f);
+    e.target.value = '';
+  };
+
+  window.addEventListener('keydown', e => {
+    if (e.code === 'Space' && e.target.tagName !== 'INPUT') {
+      e.preventDefault();
+      triggerSnapshotRecognition();
+    }
+  });
+}
+
+function setStatus(m) { $('status').innerText = m; }
+function flash(m) {
+  const a = $('alert');
+  a.innerText = m;
+  a.style.display = 'block';
+  clearTimeout(flash._t);
+  flash._t = setTimeout(() => a.style.display = 'none', 2600);
+}
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+function escapeAttr(s) { return s.replace(/'/g, "\\'"); }
+</script>
+</body>
+</html>
